@@ -1,15 +1,19 @@
 const {
 	getAllLaunches,
-	addLaunch,
+	scheduleLaunch,
 	existsId,
 	abortLaunchById,
 } = require('../../models/launchesModel')
 
-function httpGetAllLaunches(req, res) {
-	return res.status(200).json(getAllLaunches())
+const { getPagination } = require('../../services/query')
+
+async function httpGetAllLaunches(req, res) {
+	const { skip, limit } = getPagination(req.query)
+	const launches = await getAllLaunches(skip, limit)
+	return res.status(200).json(launches)
 }
 
-function httpAddLaunch(req, res) {
+async function httpAddLaunch(req, res) {
 	const launch = req.body
 
 	if (
@@ -29,20 +33,31 @@ function httpAddLaunch(req, res) {
 			error: 'Invalid launch date',
 		})
 	}
-
-	addLaunch(launch)
-	return res.status(201).json(launch)
+	try {
+		await scheduleLaunch(launch)
+		return res.status(201).json(launch)
+	} catch (err) {
+		return res.status(400).json({
+			error: `Could not schedule a new launch(probably bad planet name)`,
+		})
+	}
 }
 
-function httpAbortLaunch(req, res) {
+async function httpAbortLaunch(req, res) {
 	const id = +req.params.id
+	const existsLaunch = await existsId(id)
 
-	if (!existsId(id)) {
+	if (!existsLaunch) {
 		return res.status(404).json({ error: 'Launch not found' })
 	}
 
-	const aborted = abortLaunchById(id)
-	return res.status(200).json(aborted)
+	const aborted = await abortLaunchById(id)
+	if (!aborted) {
+		return res.status(400).json({
+			error: 'Launch not aborted',
+		})
+	}
+	return res.status(200).json({ ok: true })
 }
 
 module.exports = {
